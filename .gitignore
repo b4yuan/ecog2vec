@@ -1,3 +1,6 @@
 ecog/
+ecog_speakonly/
 runs/
-model/
+manifest/
+model*/
+wav2vec_*/

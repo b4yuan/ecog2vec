@@ -1,0 +1,12 @@
+[submodule "packages/fairseq"]
+	path = packages/fairseq
+	url = git@github.com:b4yuan/fairseq.git
+[submodule "packages/machine_learning"]
+	path = packages/machine_learning
+	url = git@github.com:jgmakin/machine_learning.git
+[submodule "packages/utils_jgm"]
+	path = packages/utils_jgm
+	url = git@github.com:jgmakin/utils_jgm.git
+[submodule "packages/ecog2txt"]
+	path = packages/ecog2txt
+	url = git@github.com:jgmakin/ecog2txt.git
