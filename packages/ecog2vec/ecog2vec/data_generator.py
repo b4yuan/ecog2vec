@@ -92,81 +92,7 @@ class NeuralDataGenerator():
                     sf.write(file_name, 
                              speaking_segment, 16000)
                 i = i + 1
-                
-    # def save_raw_data_as_chunks(self, output_dir="", chunk_size=100000):
 
-    #     for file in self.nwb_files:
-            
-    #         path = os.path.join(self.nwb_dir, file)
-            
-    #         io = NWBHDF5IO(path, load_namespaces=True, mode='r')
-    #         nwbfile = io.read()
-            
-    #         # In case this is needed
-    #         starts = list(nwbfile.trials[:]['start_time'] * self.sr)
-    #         stops = list(nwbfile.trials[:]['stop_time'] * self.sr)
-            
-    #         starts = [int(start) for start in starts]
-    #         stops = [int(stop) for stop in stops]
-            
-    #         electrode_table = nwbfile.acquisition['ElectricalSeries'].\
-    #                                   electrodes.table[:]
-                                      
-    #         indices = np.where(np.logical_or(electrode_table['group_name'] == 
-    #                                          'L256GridElectrode electrodes', 
-    #                                          electrode_table['group_name'] == 
-    #                                          'R256GridElectrode electrodes'))[0]
-
-    #         nwbfile_electrodes = nwbfile.acquisition['ElectricalSeries'].\
-    #                                      data[starts[1]:,indices]
-                                         
-    #         nwbfile_electrodes = nwbfile_electrodes[:,self.good_electrodes]
-                                         
-    #         assert nwbfile_electrodes.shape[1] == 238, \
-    #             f"Expected the second dimension to be 256, but got {nwbfile_electrodes.shape[1]}"
-
-    #         self.sr = nwbfile.acquisition['ElectricalSeries'].\
-    #                           rate
-            
-    #         w_l = self.high_gamma_min / (self.sr / 2) # Normalize the frequency
-    #         w_h = self.high_gamma_max / (self.sr / 2)
-    #         b, a = butter(5, [w_l,w_h], 'band')
-            
-    #         for ch in range(nwbfile_electrodes.shape[1]):
-    #             nwbfile_electrodes[:,ch] = filtfilt(b, 
-    #                                                 a, 
-    #                                                 nwbfile_electrodes[:,ch])
-            
-    #         # calculate the analytic amplitude
-    #         for ch in range(nwbfile_electrodes.shape[1]):
-    #             analytic_signal = hilbert(nwbfile_electrodes[:,ch])
-    #             nwbfile_electrodes[:,ch] = np.abs(analytic_signal)
-            
-    #         num_full_chunks = len(nwbfile_electrodes) // chunk_size
-    #         # last_chunk_size = len(nwbfile_electrodes) % chunk_size
-
-    #         full_chunks = np.split(nwbfile_electrodes[:num_full_chunks * chunk_size], num_full_chunks)
-    #         last_chunk = nwbfile_electrodes[num_full_chunks * chunk_size:]
-
-    #         chunks = full_chunks # + [last_chunk] omit the last non-100000 chunk
-            
-    #         # Checking lengths here
-    #         # for chunk in chunks:
-    #         #     print(chunk.shape)
-    #         # print(last_chunk.shape)
-
-    #         # Loop through the chunks and save them as WAV files
-    #         for i, chunk in enumerate(chunks):
-    #             file_name = f'{output_dir}/{file}_{i}.wav' # CHANGE FOR EACH SUBJECT
-    #             sf.write(file_name, chunk, 16000, subtype='FLOAT')  # adjust as needed
-
-    #             # DEBUGGING
-    #             # print(f'Data from {file} written with shape {nwbfile_electrodes.shape}.')
-    #             # print('Data before being written to wav file:')
-    #             # print(chunks[0][0:10,0])
-    #             # print('Data after being written to wav file:')
-    #             # wave, sr = sf.read(file_name)
-    #             # print(wave[0:10,0], sr)
             
     def write_raw_data(self, 
                        chopped_sentence_dir=None,
@@ -210,6 +136,9 @@ class NeuralDataGenerator():
                                              electrode_table['group_name'] == 
                                              'R256GridElectrode electrodes'))[0]
             
+            self.nwb_sr = nwbfile.acquisition['ElectricalSeries'].\
+                              rate
+            
             starts = list(nwbfile.trials[:]['start_time'] * self.nwb_sr)
             stops = list(nwbfile.trials[:]['stop_time'] * self.nwb_sr)
 
@@ -217,13 +146,9 @@ class NeuralDataGenerator():
                                          data[:,indices]
                                          
             nwbfile_electrodes = nwbfile_electrodes[:,self.good_electrodes] # only use good electrodes
-            nwbfile_electrodes = nwbfile_electrodes[starts[0]:stops[-1],:] # remove starting/end silences
                                          
             assert nwbfile_electrodes.shape[1] == 238, \
                 f"Expected the second dimension to be 256, but got {nwbfile_electrodes.shape[1]}"
-
-            self.nwb_sr = nwbfile.acquisition['ElectricalSeries'].\
-                              rate
             
             w_l = self.high_gamma_min / (self.nwb_sr / 2) # Normalize the frequency
             w_h = self.high_gamma_max / (self.nwb_sr / 2)
@@ -270,11 +195,13 @@ class NeuralDataGenerator():
                     sf.write(file_name, chunk, 16000, subtype='FLOAT')  # adjust as needed
                 
             if chopped_recording_dir:
-                num_full_chunks = len(nwbfile_electrodes) // chunk_length
-                # last_chunk_size = len(nwbfile_electrodes) % chunk_size
+                
+                _nwbfile_electrodes = nwbfile_electrodes # [starts[0]:stops[-1],:] # remove starting/end silences
+                num_full_chunks = len(_nwbfile_electrodes) // chunk_length
+                # last_chunk_size = len(_nwbfile_electrodes) % chunk_size
 
-                full_chunks = np.split(nwbfile_electrodes[:num_full_chunks * chunk_length], num_full_chunks)
-                last_chunk = nwbfile_electrodes[num_full_chunks * chunk_length:]
+                full_chunks = np.split(_nwbfile_electrodes[:num_full_chunks * chunk_length], num_full_chunks)
+                last_chunk = _nwbfile_electrodes[num_full_chunks * chunk_length:]
 
                 chunks = full_chunks # + [last_chunk] omit the last non-100000 chunk
                 
