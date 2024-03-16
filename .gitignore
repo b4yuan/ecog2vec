@@ -1,9 +1,9 @@
 ecog/
 ecog_speakonly/
 runs/
-manifest/
 model*/
 wav2vec_*/
 elu_models/
 notebooks/dummy.ipynb
-/notebooks/data_collect
+notebooks/data_collect
+manifest/
