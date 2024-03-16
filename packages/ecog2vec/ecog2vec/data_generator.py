@@ -21,77 +21,9 @@ class NeuralDataGenerator():
         
         self.high_gamma_min = 70
         self.high_gamma_max = 199
+
+        self.electrode_name = '' # default for 401
         pass
-    
-    def write_hg_speaking_segments(self, output_dir, clipped=False, length=0):
-        """
-        Takes in an output directory and writes the speaking segments 
-        of the ECoG data to that directory as multi-channel WAVE files.
-        Can clip the data to a certain length (and throw out data less
-        that that length) to handle batching.
-
-        Args:
-            output_dir (str): output directory to save WAVE files
-            
-        KW Args:
-            clipped (bool): clip the WAVE files to a certain length
-            length (int): length to clip WAVE files to
-
-        Returns:
-            (None)
-        """
-        
-        for file in self.nwb_files:
-            
-            path = os.path.join(self.nwb_dir, file)
-            
-            io = NWBHDF5IO(path, load_namespaces=True, mode='r')
-            nwbfile = io.read()
-
-            nwbfile_electrodes = nwbfile.processing['ecephys'].\
-                                         data_interfaces['LFP'].\
-                                         electrical_series['preprocessed (bipolar)'].\
-                                         data[:,self.good_electrodes]
-
-            self.sr = nwbfile.processing['ecephys'].\
-                              data_interfaces['LFP'].\
-                              electrical_series['high gamma (bipolar)'].\
-                              rate
-                              
-            w_l = self.high_gamma_min / (self.sr / 2) # Normalize the frequency
-            w_h = self.high_gamma_max / (self.sr / 2)
-            b, a = butter(5, [w_l,w_h], 'band')
-            
-            for ch in range(nwbfile_electrodes.shape[1]):
-                nwbfile_electrodes[:,ch] = filtfilt(b, 
-                                                    a, 
-                                                    nwbfile_electrodes[:,ch])
-            
-            # calculate the analytic amplitude
-            for ch in range(nwbfile_electrodes.shape[1]):
-                analytic_signal = hilbert(nwbfile_electrodes[:,ch])
-                nwbfile_electrodes[:,ch] = np.abs(analytic_signal)
-            
-            starts = list(nwbfile.trials[:]['start_time'] * self.sr)
-            stops = list(nwbfile.trials[:]['stop_time'] * self.sr)
-            
-            ### Get speaking segments only ###
-            starts = [int(start) for start in starts]
-            stops = [int(stop) for stop in stops]
-            
-            i = 0
-            for start, stop in zip(starts, stops):
-                speaking_segment = nwbfile_electrodes[start:stop,:]
-                if clipped == True: 
-                    if speaking_segment.shape[0] > length:
-                        file_name = f'{output_dir}/{file}_{i}.wav'
-                        sf.write(file_name, 
-                                 speaking_segment[0:length,:], 16000) 
-                else:
-                    file_name = f'{output_dir}/{file}_{i}.wav'
-                    sf.write(file_name, 
-                             speaking_segment, 16000)
-                i = i + 1
 
             
     def write_raw_data(self, 
@@ -128,96 +60,103 @@ class NeuralDataGenerator():
             io = NWBHDF5IO(path, load_namespaces=True, mode='r')
             nwbfile = io.read()
 
-            electrode_table = nwbfile.acquisition['ElectricalSeries'].\
-                                      electrodes.table[:]
-                                      
-            indices = np.where(np.logical_or(electrode_table['group_name'] == 
-                                             'L256GridElectrode electrodes', 
-                                             electrode_table['group_name'] == 
-                                             'R256GridElectrode electrodes'))[0]
-            
-            self.nwb_sr = nwbfile.acquisition['ElectricalSeries'].\
-                              rate
-            
-            starts = list(nwbfile.trials[:]['start_time'] * self.nwb_sr)
-            stops = list(nwbfile.trials[:]['stop_time'] * self.nwb_sr)
+            try: 
+                electrode_table = nwbfile.acquisition['ElectricalSeries'].\
+                                        electrodes.table[:]
+                                        
+                indices = np.where(np.logical_or(
+                    electrode_table['group_name'] == 
+                    'L256GridElectrode electrodes', 
+                    electrode_table['group_name'] == 
+                    self.electrode_name) # Grid electrodes
+                    )[0] # R256GridElectrode electrodes
+                
+                self.nwb_sr = nwbfile.acquisition['ElectricalSeries'].\
+                                rate
+                
+                starts = list(nwbfile.trials[:]['start_time'] * self.nwb_sr)
+                stops = list(nwbfile.trials[:]['stop_time'] * self.nwb_sr)
 
-            nwbfile_electrodes = nwbfile.acquisition['ElectricalSeries'].\
-                                         data[:,indices]
-                                         
-            nwbfile_electrodes = nwbfile_electrodes[:,self.good_electrodes] # only use good electrodes
-                                         
-            assert nwbfile_electrodes.shape[1] == 238, \
-                f"Expected the second dimension to be 256, but got {nwbfile_electrodes.shape[1]}"
-            
-            w_l = self.high_gamma_min / (self.nwb_sr / 2) # Normalize the frequency
-            w_h = self.high_gamma_max / (self.nwb_sr / 2)
-            b, a = butter(5, [w_l,w_h], 'band')
-            
-            for ch in range(nwbfile_electrodes.shape[1]):
-                nwbfile_electrodes[:,ch] = filtfilt(b, 
-                                                    a, 
-                                                    nwbfile_electrodes[:,ch])
+                nwbfile_electrodes = nwbfile.acquisition['ElectricalSeries'].\
+                                            data[:,indices]
+                                            
+                nwbfile_electrodes = nwbfile_electrodes[:,self.good_electrodes] # only use good electrodes
+                print(f'Number of good electrodes in {file}: {nwbfile_electrodes.shape[1]}')
+                # assert nwbfile_electrodes.shape[1] == len(self.good_electrodes), \
+                #     f"Dimension issue..."
+                
+                w_l = self.high_gamma_min / (self.nwb_sr / 2) # Normalize the frequency
+                w_h = self.high_gamma_max / (self.nwb_sr / 2)
+                b, a = butter(5, [w_l,w_h], 'band')
+                
+                for ch in range(nwbfile_electrodes.shape[1]):
+                    nwbfile_electrodes[:,ch] = filtfilt(b, 
+                                                        a, 
+                                                        nwbfile_electrodes[:,ch])
+                    nwbfile_electrodes[:,ch] = np.abs(hilbert(nwbfile_electrodes[:,ch]))
+                
+                ### Get speaking segments only ###
+                starts = [int(start) for start in starts]
+                stops = [int(stop) for stop in stops]
+                
+                i = 0
+                all_speaking_segments = []
+                for start, stop in zip(starts, stops):
+                    speaking_segment = nwbfile_electrodes[start:stop,:]
+                    all_speaking_segments.append(speaking_segment)
+                            
+                    if sentence_dir:
+                        file_name = f'{sentence_dir}/{file}_{i}.wav'
+                        sf.write(file_name, 
+                                speaking_segment, 16000, subtype='FLOAT')
+                    
+                    i = i + 1
+                    
+                concatenated_speaking_segments = np.concatenate(all_speaking_segments, axis=0)
+                
+                if chopped_sentence_dir:
+                    num_full_chunks = len(concatenated_speaking_segments) // chunk_length
+                    # last_chunk_size = len(nwbfile_electrodes) % chunk_size
 
-                nwbfile_electrodes[:,ch] = np.abs(hilbert(nwbfile_electrodes[:,ch]))
-              
-            ### Get speaking segments only ###
-            starts = [int(start) for start in starts]
-            stops = [int(stop) for stop in stops]
-            
-            i = 0
-            all_speaking_segments = []
-            for start, stop in zip(starts, stops):
-                speaking_segment = nwbfile_electrodes[start:stop,:]
-                all_speaking_segments.append(speaking_segment)
+                    full_chunks = np.split(concatenated_speaking_segments[:num_full_chunks * chunk_length], num_full_chunks)
+                    last_chunk = concatenated_speaking_segments[num_full_chunks * chunk_length:]
+
+                    chunks = full_chunks # + [last_chunk] omit the last non-100000 chunk
+
+                    # Loop through the chunks and save them as WAV files
+                    for i, chunk in enumerate(chunks):
+                        file_name = f'{chopped_sentence_dir}/{file}_{i}.wav' # CHANGE FOR EACH SUBJECT
+                        sf.write(file_name, chunk, 16000, subtype='FLOAT')  # adjust as needed
+                    
+                if chopped_recording_dir:
+                    
+                    _nwbfile_electrodes = nwbfile_electrodes # [starts[0]:stops[-1],:] # remove starting/end silences
+                    num_full_chunks = len(_nwbfile_electrodes) // chunk_length
+                    # last_chunk_size = len(_nwbfile_electrodes) % chunk_size
+                    
+                    if num_full_chunks != 0:
+
+                        full_chunks = np.split(_nwbfile_electrodes[:num_full_chunks * chunk_length], num_full_chunks)
+                        last_chunk = _nwbfile_electrodes[num_full_chunks * chunk_length:]
+
+                        chunks = full_chunks # + [last_chunk] omit the last non-100000 chunk
                         
-                if sentence_dir:
-                    file_name = f'{sentence_dir}/{file}_{i}.wav'
-                    sf.write(file_name, 
-                            speaking_segment, 16000, subtype='FLOAT')
-                
-                i = i + 1
-                
-            concatenated_speaking_segments = np.concatenate(all_speaking_segments, axis=0)
-            
-            if chopped_sentence_dir:
-                num_full_chunks = len(concatenated_speaking_segments) // chunk_length
-                # last_chunk_size = len(nwbfile_electrodes) % chunk_size
+                        # Checking lengths here
+                        # for chunk in chunks:
+                        #     print(chunk.shape)
+                        # print(last_chunk.shape)
 
-                full_chunks = np.split(concatenated_speaking_segments[:num_full_chunks * chunk_length], num_full_chunks)
-                last_chunk = concatenated_speaking_segments[num_full_chunks * chunk_length:]
+                        # Loop through the chunks and save them as WAV files
+                        for i, chunk in enumerate(chunks):
+                            file_name = f'{chopped_recording_dir}/{file}_{i}.wav' # CHANGE FOR EACH SUBJECT
+                            sf.write(file_name, chunk, 16000, subtype='FLOAT')  # adjust as needed
+                    
+                if full_recording_dir:
+                    file_name = f'{full_recording_dir}/{file}.wav'
+                    sf.write(file_name, nwbfile_electrodes, 16000, subtype='FLOAT')
 
-                chunks = full_chunks # + [last_chunk] omit the last non-100000 chunk
-
-                # Loop through the chunks and save them as WAV files
-                for i, chunk in enumerate(chunks):
-                    file_name = f'{chopped_sentence_dir}/{file}_{i}.wav' # CHANGE FOR EACH SUBJECT
-                    sf.write(file_name, chunk, 16000, subtype='FLOAT')  # adjust as needed
-                
-            if chopped_recording_dir:
-                
-                _nwbfile_electrodes = nwbfile_electrodes # [starts[0]:stops[-1],:] # remove starting/end silences
-                num_full_chunks = len(_nwbfile_electrodes) // chunk_length
-                # last_chunk_size = len(_nwbfile_electrodes) % chunk_size
-
-                full_chunks = np.split(_nwbfile_electrodes[:num_full_chunks * chunk_length], num_full_chunks)
-                last_chunk = _nwbfile_electrodes[num_full_chunks * chunk_length:]
-
-                chunks = full_chunks # + [last_chunk] omit the last non-100000 chunk
-                
-                # Checking lengths here
-                # for chunk in chunks:
-                #     print(chunk.shape)
-                # print(last_chunk.shape)
-
-                # Loop through the chunks and save them as WAV files
-                for i, chunk in enumerate(chunks):
-                    file_name = f'{chopped_recording_dir}/{file}_{i}.wav' # CHANGE FOR EACH SUBJECT
-                    sf.write(file_name, chunk, 16000, subtype='FLOAT')  # adjust as needed
-                
-            if full_recording_dir:
-                file_name = f'{full_recording_dir}/{file}.wav'
-                sf.write(file_name, nwbfile_electrodes, 16000, subtype='FLOAT')
+            except Exception as e: 
+                print(f"An error occured and block {path} is not inluded in the wav2vec training data: {e}")
         
     def print(self):
         print('hi')

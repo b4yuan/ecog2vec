@@ -4,3 +4,6 @@ runs/
 manifest/
 model*/
 wav2vec_*/
+elu_models/
+notebooks/dummy.ipynb
+/notebooks/data_collect
