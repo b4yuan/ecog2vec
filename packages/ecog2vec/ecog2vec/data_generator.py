@@ -1,11 +1,11 @@
+import os
+import re
 from pynwb import NWBHDF5IO
 import numpy as np
 import soundfile as sf
-import os
 import scipy
 from scipy.fft import fft, ifft, fftfreq, rfftfreq, rfft, irfft
 from scipy.signal import butter, lfilter, filtfilt, hilbert
-import re
 # from ripple2nwb.neural_processing import NeuralDataProcessor
 # from prepype import NeuralDataProcessor
 from prepype.neural_processing import NeuralDataProcessor, downsample, downsample_NWB
@@ -49,6 +49,7 @@ class NeuralDataGenerator():
         self.nwb_files = [file
                           for file in file_list
                           if file.startswith(f"{patient}")]
+        self.nwb_sr = None
         self.target_sr = 100
 
         self.bad_electrodes = []
@@ -184,7 +185,7 @@ class NeuralDataGenerator():
                     self.nwb_sr = nwbfile.acquisition["ElectricalSeries"].\
                                     rate
 
-                    # indices = np.where(electrode_table["group_name"] == 
+                    # indices = np.where(electrode_table["group_name"] ==
                     #                    self.electrode_name
                     #                    )[0]
 
@@ -197,10 +198,10 @@ class NeuralDataGenerator():
                     print('High gamma extraction done.')
 
                     nwbfile_electrodes = processor.nwb_file.processing['ecephys'].\
-                                                    data_interfaces['LFP'].\
-                                                    electrical_series[f'high gamma \
-                                                                      ({list(self.config["referencing"])[0]})'].\
-                                                    data[()][:, self.good_electrodes]
+                                            data_interfaces['LFP'].\
+                                            electrical_series[f'high gamma \
+                                                ({list(self.config["referencing"])[0]})'].\
+                                            data[()][:, self.good_electrodes]
 
                     print(f"Number of good electrodes in {file}: {nwbfile_electrodes.shape[1]}")
 
@@ -215,10 +216,10 @@ class NeuralDataGenerator():
                              for start
                              in list(nwbfile.trials[:]["stop_time"] * self.nwb_sr)]
 
-                    # Manage the speaking segments only... as an option .
+                    # Manage the speaking segments only... as an option.
                     # Training data for wav2vec as speaking segments only
-                    # will be saved in the `chopped_sentence_dir` directory. 
-                    # This block also saves the individual sentences.                 
+                    # will be saved in the `chopped_sentence_dir` directory.
+                    # This block also saves the individual sentences.
                     i = 0
                     all_speaking_segments = []
                     for start, stop in zip(starts, stops):
@@ -232,7 +233,8 @@ class NeuralDataGenerator():
 
                         i = i + 1
 
-                    concatenated_speaking_segments = np.concatenate(all_speaking_segments, axis=0)
+                    concatenated_speaking_segments = np.concatenate(all_speaking_segments, 
+                                                                    axis=0)
 
                     # Training data: speaking segments only
                     if create_training_data and chopped_sentence_dir:
@@ -258,7 +260,7 @@ class NeuralDataGenerator():
                     # Training data: silences included
                     if create_training_data and chopped_recording_dir:
                         
-                        _nwbfile_electrodes = nwbfile_electrodes # [starts[0]:stops[-1],:]
+                        _nwbfile_electrodes = nwbfile_electrodes 
                         num_full_chunks = len(_nwbfile_electrodes) // chunk_length
                         # last_chunk_size = len(_nwbfile_electrodes) % chunk_size
 
@@ -291,8 +293,8 @@ class NeuralDataGenerator():
                         print('Full recording saved as a WAVE file.')
 
                     if (ecog_tfrecords_dir and
-                        ((self.patient in ('EFC402', 'EFC403') and (block in self.blocks_ID_demo2) or
-                         (self.patient in ('EFC400', 'EFC401') and (block in self.blocks_ID_mocha))))):
+                        ((self.patient in {'EFC402', 'EFC403'} and (block in self.blocks_ID_demo2) or
+                         (self.patient in {'EFC400', 'EFC401'} and (block in self.blocks_ID_mocha))))):
 
                         # Create TFRecords for the ECoG data
 
@@ -399,7 +401,9 @@ class NeuralDataGenerator():
                         print('In distribution block. TFRecords created.')
 
             except Exception as e:
-                print(f"An error occured and block {path} is not inluded in the wav2vec training data: {e}")
+                print(f"An error occured \
+                        and block {path} is not inluded \
+                        in the wav2vec training data: {e}")
 
             io.close()
 
@@ -425,7 +429,8 @@ def write_to_Protobuf(path, example_dicts):
         feature_example = tfh.make_feature_example(example_dict)
         writer.write(feature_example.SerializeToString())
 
-def transcription_to_array(trial_t0, trial_tF, onset_times, offset_times, transcription, max_length, sampling_rate):
+def transcription_to_array(trial_t0, trial_tF, onset_times, offset_times, 
+                           transcription, max_length, sampling_rate):
     
     # if the transcription is missing (e.g. for covert trials)
     if transcription is None:
