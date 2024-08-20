@@ -8,6 +8,7 @@ from scipy.fft import fft, ifft, fftfreq, rfftfreq, rfft, irfft
 from scipy.signal import butter, lfilter, filtfilt, hilbert
 # from ripple2nwb.neural_processing import NeuralDataProcessor
 # from prepype import NeuralDataProcessor
+from ripple2nwb.neural_processing import get_bipolar_referenced_electrodes
 from prepype.neural_processing import NeuralDataProcessor, downsample, downsample_NWB
 from utils_jgm.machine_compatibility_utils import MachineCompatibilityUtils
 from utils_jgm.toolbox import resample
@@ -54,6 +55,9 @@ class NeuralDataGenerator():
 
         self.bad_electrodes = []
         self.good_electrodes = list(np.arange(256))
+
+        self._bipolar_to_elec_map = None
+        self._good_channels = None
 
         self.high_gamma_min = 70
         self.high_gamma_max = 199
@@ -108,6 +112,10 @@ class NeuralDataGenerator():
             self.bad_electrodes = None
 
         self.good_electrodes = [x for x in self.good_electrodes if x not in self.bad_electrodes]
+
+        self.grid_step = 1
+        self.elec_layout = np.arange(np.prod(
+            self.grid_size)-1, -1, -1).reshape(self.grid_size).T[::self.grid_step, ::self.grid_step]
 
         self.config = None
 
@@ -197,11 +205,20 @@ class NeuralDataGenerator():
                     processor.edwards_high_gamma()
                     print('High gamma extraction done.')
 
-                    nwbfile_electrodes = processor.nwb_file.processing['ecephys'].\
+                    if not BPR: 
+                        nwbfile_electrodes = processor.nwb_file.processing['ecephys'].\
                                             data_interfaces['LFP'].\
-                                            electrical_series[f'high gamma \
-                                                ({list(self.config["referencing"])[0]})'].\
+                                            electrical_series[f'high gamma ({list(self.config["referencing"])[0]})'].\
                                             data[()][:, self.good_electrodes]
+
+                    elif BPR:
+                        nwbfile_electrodes = processor.nwb_file.processing['ecephys'].\
+                                            data_interfaces['LFP'].\
+                                            electrical_series[f'high gamma ({list(self.config["referencing"])[0]})'].\
+                                            data[()][:, self.good_channels()]
+
+                    else:
+                        raise ValueError("Only CAR or BPR are supported.")
 
                     print(f"Number of good electrodes in {file}: {nwbfile_electrodes.shape[1]}")
 
@@ -235,6 +252,7 @@ class NeuralDataGenerator():
 
                     concatenated_speaking_segments = np.concatenate(all_speaking_segments, 
                                                                     axis=0)
+
 
                     # Training data: speaking segments only
                     if create_training_data and chopped_sentence_dir:
@@ -401,11 +419,43 @@ class NeuralDataGenerator():
                         print('In distribution block. TFRecords created.')
 
             except Exception as e:
-                print(f"An error occured \
-                        and block {path} is not inluded \
+                print(f"An error occured\
+                        and block {path} is not inluded\
                         in the wav2vec training data: {e}")
 
             io.close()
+
+    def bipolar_to_elec_map(self):
+        # print('WARNING!!!!  MAKING UP bipolar_to_elec_map!!!')
+        elec_map = []
+        layout = self.elec_layout  # for short
+        for i in range(layout.shape[0]):
+            for j in range(layout.shape[1]):
+                if j < layout.shape[1]-1:
+                    elec_map.append((layout[i, j], layout[i, j+1]))
+                if i < layout.shape[0]-1:
+                    elec_map.append((layout[i, j], layout[i+1, j]))
+        return np.array(elec_map)
+
+    def good_channels(self):
+        '''
+        Pseudo-channels, constructed (on the fly) from the physical electrodes.
+        For now at least, we won't USE_FIELD_POTENTIALS if we want to
+        REFERENCE_BIPOLAR.
+        NB!!: The *order* of these channels matters--it determines the order of
+        the input data, and therefore is required by the functions that plot
+        electrode_contributions in plotters.py! And the order of these channels
+        will be determined by the *elec_layout*.
+        '''
+
+        # NB: this means that the electrodes are *not* in numerical order ('e1'
+        #  does not correspond to the 0th entry in all_electrodes): as you can
+        #  check, flattening the elec_layout does not yield an ordered list.
+        all_electrodes = self.elec_layout.flatten().tolist()
+        return [
+            ch for ch, elec_pair in enumerate(self.bipolar_to_elec_map())
+            if all([e in self.good_electrodes for e in elec_pair])
+        ]
 
 
 '''
